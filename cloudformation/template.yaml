@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Cloud Fun Facts Generator (Lambda + HTTP API + DynamoDB + Bedrock)
+
+Parameters:
+  AmplifyDomain:
+    Type: String
+    Default: "*"
+    Description: Allowed CORS origin for the frontend (e.g., https://production.<appId>.amplifyapp.com).
+  BedrockModelId:
+    Type: String
+    Default: anthropic.claude-3-5-sonnet-20240620-v1:0
+    Description: Bedrock model ID to invoke (e.g., anthropic.claude-3-5-sonnet-20240620-v1:0).
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Timeout: 30
+    Tracing: PassThrough
+
+Resources:
+
+  FactsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: CloudFacts
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: FactID
+          AttributeType: S
+      KeySchema:
+        - AttributeName: FactID
+          KeyType: HASH
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name: FunfactsAPI
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref AmplifyDomain
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Amz-Date
+          - X-Api-Key
+          - X-Amz-Security-Token
+        AllowMethods: [GET, OPTIONS]
+        MaxAge: 3600
+        AllowCredentials: false
+
+  CloudFunFactsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: CloudFunFacts
+      Description: Returns a witty cloud fact (DynamoDB + Bedrock).
+      CodeUri: ../src/cloudfunfacts_function/
+      Handler: cloudfunfacts_lambda.lambda_handler
+      Events:
+        GetFunFact:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /funfact
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - DynamoDBReadPolicy:
+            TableName: !Ref FactsTable
+        - Version: '2012-10-17'
+          Statement:
+            - Sid: InvokeBedrock
+              Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Sub arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}
+      # Optional: expose model/table to code if you want to read from env vars later
+      Environment:
+        Variables:
+          DDB_TABLE_NAME: CloudFacts
+          BEDROCK_MODEL: !Ref BedrockModelId
+
+Outputs:
+  ApiBaseUrl:
+    Description: Base invoke URL of the HTTP API.
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com
+  FunFactsEndpoint:
+    Description: Fully qualified endpoint for GET /funfact.
+    Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com/funfact
+  AmplifyAppUrlHint:
+    Description: Paste your Amplify domain into AmplifyDomain to lock CORS (e.g., https://production.<appId>.amplifyapp.com).
+    Value: !Ref AmplifyDomain
