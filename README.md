@@ -88,7 +88,7 @@ aws-cloud-fun-facts-generator
 │       └── cloudfunfacts_lambda.py
 │   └── records/              			  # DynamoDB seed values
 │       └── records.json
-│   └── index.html			              # Amplify front-end (zipped manually)
+│   └── index.html			              # Default web page
 ├── LICENSE
 ├── README.md
 └── .gitignore
